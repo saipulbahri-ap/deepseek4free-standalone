@@ -1,0 +1,29 @@
+# Hermes deployment spec
+# Context: /home/saipul/.openclaw-workspace/deepseek4free
+
+# Build args
+ARG PYTHON_VERSION=3.11-slim
+
+FROM python:${PYTHON_VERSION}
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt \
+    fastapi \
+    uvicorn \
+    python-dotenv
+
+COPY . .
+
+# Token disediakan via env variable
+ENV DEEPSEEK_AUTH_TOKEN=""
+ENV PORT=8787
+
+EXPOSE 8787
+
+CMD uvicorn openai_api:app --host 0.0.0.0 --port ${PORT}

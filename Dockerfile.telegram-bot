@@ -1,0 +1,18 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY telegram_bot.py ./
+
+ENV OPENAI_API_BASE=http://host.docker.internal:8787
+ENV OPENAI_MODEL=deepseek-chat
+ENV BOT_MEMORY_PATH=/data/bot_memory.json
+ENV BOT_MAX_HISTORY=12
+ENV BOT_SYSTEM_PROMPT="Kamu asisten yang ringkas, akurat, dan membantu."
+
+VOLUME ["/data"]
+
+CMD ["python3", "telegram_bot.py"]

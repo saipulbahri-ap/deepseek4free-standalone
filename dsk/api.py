@@ -265,18 +265,68 @@ class DeepSeekAPI:
             return None
 
         try:
-            if chunk.startswith(b'data: '):
-                data = json.loads(chunk[6:])
-                if isinstance(data, dict):
-                    if 'p' in data and data['p'] == 'response/content':
-                        return {'content': data['v'], 'type': 'text'}
-                    elif 'p' in data and data['p'] == 'response/status' and data['v'] == 'FINISHED':
-                        return {'finish_reason': 'stop'}
-                    elif 'v' in data and isinstance(data['v'], dict):
-                        return {'content': data['v'].get('content', ''), 'type': 'text'}
-        except json.JSONDecodeError:
-            raise APIError("Invalid JSON in response chunk")
-        except Exception as e:
-            raise APIError(f"Error parsing chunk: {str(e)}")
+            text = chunk.decode('utf-8').strip()
+        except UnicodeDecodeError:
+            return None
+
+        if not text:
+            return None
+
+        # [DONE] marker
+        if text == 'data: [DONE]':
+            return {'finish_reason': 'stop'}
+
+        if not text.startswith('data: '):
+            return None
+
+        json_str = text[6:]
+        if not json_str:
+            return None
+
+        try:
+            data = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            raise APIError(f"Invalid JSON in response chunk: {json_str!r}")
+
+        if not isinstance(data, dict):
+            return None
+
+        # Format 1: DeepSeek native streaming chunk
+        if data.get('p') == 'response/content':
+            return {'content': data['v'], 'type': 'text'}
+
+        # Format 2: DeepSeek finish marker
+        if data.get('p') == 'response/status' and data.get('v') == 'FINISHED':
+            return {'finish_reason': 'stop'}
+
+        # Format 3: nested object in v
+        if 'v' in data and isinstance(data['v'], dict):
+            content = data['v'].get('content', '')
+            if content:
+                return {'content': content, 'type': 'text'}
+
+        # Format 4: bare content key
+        if 'content' in data:
+            return {'content': data['content'], 'type': 'text'}
+
+        # Format 5: OpenAI-compatible streaming (choices array)
+        choices = data.get('choices')
+        if isinstance(choices, list) and len(choices) > 0:
+            choice = choices[0]
+            delta = choice.get('delta', {})
+            finish = choice.get('finish_reason')
+            content = delta.get('content', '')
+            if content:
+                return {'content': content, 'type': 'text'}
+            if finish:
+                return {'finish_reason': finish}
+
+        # Format 6: type:text format with text field
+        if data.get('type') == 'text' and 'text' in data:
+            return {'content': data['text'], 'type': 'text'}
+
+        # Unknown format — log for debugging
+        import sys
+        print(f"[DEEPSEEK_DEBUG] Unhandled chunk: {json_str!r}", file=sys.stderr)
 
         return None
