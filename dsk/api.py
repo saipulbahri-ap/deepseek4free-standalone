@@ -267,17 +267,13 @@ class DeepSeekAPI:
         try:
             if chunk.startswith(b'data: '):
                 data = json.loads(chunk[6:])
-
-                if 'choices' in data and data['choices']:
-                    choice = data['choices'][0]
-                    if 'delta' in choice:
-                        delta = choice['delta']
-
-                        return {
-                            'content': delta.get('content', ''),
-                            'type': delta.get('type', ''),
-                            'finish_reason': choice.get('finish_reason')
-                        }
+                if isinstance(data, dict):
+                    if 'p' in data and data['p'] == 'response/content':
+                        return {'content': data['v'], 'type': 'text'}
+                    elif 'p' in data and data['p'] == 'response/status' and data['v'] == 'FINISHED':
+                        return {'finish_reason': 'stop'}
+                    elif 'v' in data and isinstance(data['v'], dict):
+                        return {'content': data['v'].get('content', ''), 'type': 'text'}
         except json.JSONDecodeError:
             raise APIError("Invalid JSON in response chunk")
         except Exception as e:
